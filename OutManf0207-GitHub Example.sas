@@ -1,4 +1,13 @@
+%let program="Out-Manf0217.sas";
+%let programversion="0";
+
 libname LPAll "J:\SAS Testing\Labor Productivity in SAS\LP All Sectors\Libraries\Intermediate";
+
+/*Add program and version to ProgramVersion table */
+Proc sql;
+	insert into LPAll.ProgramVersions
+	values (&program, &programversion);
+quit;
 
 /*	This query extracts from IPS all source DataSeriesIDs for output(XT) for manufacturing. */
 
@@ -224,37 +233,44 @@ Proc sql;
     on	 			(a.IndustryID=b.IndustryID) and (a.CensusPeriodID=b.CensusPeriodID)and (a.YearID=b.YearID) and 
 					(a.YearNo=b.YearNo);
 
+
 /*	Calculating InvBegYr | XT15=InvBOYFG, XT17=InvBOYWP, SourceNonEmployerRatio | (XT15+XT17)*SourceNonEmployerRatio */
 
 	Create table  	work.InvBegYr as 
     Select          a.IndustryID, a.CensusPeriodID, a.YearID, a.YearNo,
-					case when a.method = "NoInvFG" then (0 + b.Value) * C.Value
-						 when a.method = "NoInv" then (0 + 0) * C.Value
-						else (a.Value + b.Value) * C.Value 
+					case when b.method = "NoInvFG" then (0 + d.Value) * a.Value
+						 when b.method = "NoInv" then (0 + 0) * a.Value
+						else (c.Value + d.Value) * a.Value 
 					end as Value
-    from 	     	work.IPS_SourceData a
-	inner join		work.IPS_SourceData b
-    on	 			(a.IndustryID=b.IndustryID) and (a.CensusPeriodID=b.CensusPeriodID) and (a.YearID=b.YearID) and 
-					(a.YearNo=b.YearNo) and (a.DataSeriesID = "XT15") and (b.DataSeriesID = "XT17")
-	inner join  	 work.SourceNonEmployerRatio c
- 	on				(a.IndustryID=c.IndustryID) and (a.CensusPeriodID=c.CensusPeriodID) and (a.YearID=c.YearID) and 
-					(a.YearNo=c.YearNo);
+    from		  	work.SourceNonEmployerRatio a
+	left join		work.ConfigDistinct b
+	on				(a.IndustryID=b.IndustryID) and (a.CensusPeriodID=b.CensusPeriodID)
+ 	left join 		work.IPS_SourceData c
+	on				(a.IndustryID=c.IndustryID) and (a.CensusPeriodID=c.CensusPeriodID) and (a.YearID=c.YearID) and 
+					(a.YearNo=c.YearNo) and (c.DataSeriesID = "XT15")
+	left join		work.IPS_SourceData d
+    on	 			(a.IndustryID=d.IndustryID) and (a.CensusPeriodID=d.CensusPeriodID) and (a.YearID=d.YearID) and 
+					(a.YearNo=d.YearNo) and (d.DataSeriesID = "XT17");
+
 
 /*	Calculating InvEndYr | XT18=InvEOYFG, XT20=InvEOYWP, SourceNonEmployerRatio | (XT18+XT20)*SourceNonEmployerRatio */
 
 	Create table  	work.InvEndYr as 
     Select          a.IndustryID, a.CensusPeriodID, a.YearID, a.YearNo,
-					case when a.method = "NoInvFG" then (0 + b.Value) * C.Value 
-						 when a.method = "NoInv" then (0 + 0) * C.Value 
-	  					 else (a.Value + b.Value) * C.Value 
+					case when b.method = "NoInvFG" then (0 + d.Value) * a.Value
+						 when b.method = "NoInv" then (0 + 0) * a.Value
+						else (c.Value + d.Value) * a.Value 
 					end as Value
-    from 	     	work.IPS_SourceData a
-	inner join		work.IPS_SourceData b
-    on	 			(a.IndustryID=b.IndustryID) and (a.CensusPeriodID=b.CensusPeriodID) and (a.YearID=b.YearID) and 
-					(a.YearNo=b.YearNo) and (a.DataSeriesID = "XT18") and (b.DataSeriesID = "XT20")
-	inner join		work.SourceNonEmployerRatio c
+    from		  	work.SourceNonEmployerRatio a
+	left join		work.ConfigDistinct b
+	on				(a.IndustryID=b.IndustryID) and (a.CensusPeriodID=b.CensusPeriodID)
+ 	left join 		work.IPS_SourceData c
 	on				(a.IndustryID=c.IndustryID) and (a.CensusPeriodID=c.CensusPeriodID) and (a.YearID=c.YearID) and 
-					(a.YearNo=c.YearNo);
+					(a.YearNo=c.YearNo) and (c.DataSeriesID = "XT18")
+	left join		work.IPS_SourceData d
+    on	 			(a.IndustryID=d.IndustryID) and (a.CensusPeriodID=d.CensusPeriodID) and (a.YearID=d.YearID) and 
+					(a.YearNo=d.YearNo) and (d.DataSeriesID = "XT20");
+
 
 /*	Calculating InvChg (T50) | InvEndYr, InvBegYr | InvEndYr-InvBegYr */
 
@@ -265,6 +281,7 @@ Proc sql;
 	inner join		work.InvBegYr b
     on	 			(a.IndustryID=b.IndustryID) and (a.CensusPeriodID=b.CensusPeriodID)and (a.YearID=b.YearID) and 
 					(a.YearNo=b.YearNo);
+
 
 /*	Calculating PrimaryChangeInInventories | InvChg, PrimProdAnnualRatio | InvChg*PrimProdAnnualRatio */
 
@@ -302,7 +319,7 @@ Proc sql;
 	The variable DeflMatch is used to match production values with proper deflators (XT45=DeflMisc) */
 
 	Create table  	work.ValProdM as 
-    Select          a.IndustryID, a.CensusPeriodID, "T33" as DataSeriesID, "01" as DataArrayID, 
+    Select          a.IndustryID, a.CensusPeriodID, "T33" as DataSeriesID, "0001" as DataArrayID, 
 					a.YearID, a.YearNo,(a.Value-b.Value) as Value, "XT45" as DeflMatch
     from 	     	work.ValShipM a
 	inner join		work.Resales b
@@ -330,7 +347,7 @@ Proc sql;
 	The variable DeflMatch is used to match production values with proper deflators (XT46=DeflSecd) */
 
 	Create table  	work.ValProdS as 
-    Select          a.IndustryID, a.CensusPeriodID,  "T32" as DataSeriesID, "01" as DataArrayID, a.YearID, 
+    Select          a.IndustryID, a.CensusPeriodID,  "T32" as DataSeriesID, "0001" as DataArrayID, a.YearID, 
 					a.YearNo,(a.Value-b.Value+c.value) as Value, "XT46" as DeflMatch
     from 	     	work.ValShipS a
 	inner join		work.SecondaryIntraIndustryShipments b
@@ -589,8 +606,8 @@ Proc sql;
 
 
 /* Adjusting IntraSectoral source values for Nonemployer| IntraSectoral Source Value*SourceNonEmployerRatio |
-	XT08=IntSect1, XT09=IntSect2, XT10=IntSect3, XT11=IntSect4, XT12=IntSect5, XT13=IntSect6 |
-	T53=IntraSect5d, T54=IntraSect4d, T55=IntraSect3d, T56=IntraSectC1, T57=IntraSectC2, T58=IntraSectSc */
+	XT08=IntSect1, XT09=IntSect2, XT10=IntSect3, XT11=IntSect4|
+	T53=IntraSect5d, T54=IntraSect4d, T55=IntraSect3d, T58=IntraSectSc */
 
 	Create table  	work.IntraSect as 
     Select          a.IndustryID, a.CensusPeriodID, a.YearID, a.YearNo,(a.Value*b.Value) as Value,
@@ -598,19 +615,17 @@ Proc sql;
 							when a.DataSeriesID="XT09" then "T54"
 							when a.DataSeriesID="XT10" then "T55"
 							when a.DataSeriesID="XT11" then "T58"
-							when a.DataSeriesID="XT12" then "T56"
-							when a.DataSeriesID="XT13" then "T57"
 					end		as DataSeriesID	
     from 	     	work.IPS_SourceData a
 	inner join 		work.SourceNonEmployerRatio b
     on	 			(a.IndustryID=b.IndustryID) and (a.CensusPeriodID=b.CensusPeriodID)and (a.YearID=b.YearID) and 
 					(a.YearNo=b.YearNo) and (a.DataSeriesID = "XT08" or a.DataSeriesID = "XT09" or 
-					a.DataSeriesID = "XT10" or a.DataSeriesID = "XT11" or a.DataSeriesID = "XT12" or a.DataSeriesID = "XT13");
+					a.DataSeriesID = "XT10" or a.DataSeriesID = "XT11");
 
 
 /*	Removing intrasectoral shipments from AnnVP to calculate sectoral production values | AnnVP - IntraSect |
-	T53=IntraSect5d, T54=IntraSect4d, T55=IntraSect3d, T56=IntraSectC1, T57=IntraSectC2, T58=IntraSectSc 
-	T21=Sect5dVal, T22=Sect4dVal, T23=Sect3dVal, T24=SectScVal, T25=SectC1CVal, T26SectC2Val= */
+	T53=IntraSect5d, T54=IntraSect4d, T55=IntraSect3d, T58=IntraSectSc 
+	T21=Sect5dVal, T22=Sect4dVal, T23=Sect3dVal, T24=SectScVal */
 
 	Create table  	work.SectVal as 
     Select          a.IndustryID, a.CensusPeriodID, a.YearID, a.YearNo,(b.value-a.Value) as Value,
@@ -618,8 +633,6 @@ Proc sql;
 							when a.DataSeriesID="T54" then "T22"
 							when a.DataSeriesID="T55" then "T23"
 							when a.DataSeriesID="T58" then "T24"
-							when a.DataSeriesID="T56" then "T25"
-							when a.DataSeriesID="T57" then "T26"
 					end		as DataSeriesID						
     from 	     	work.IntraSect a
 	inner join		work.AnnVP b
@@ -708,7 +721,7 @@ Proc sql;
 
 /* 	Calculating Sectoral Output Indexes | SectoralConstantProductionIndex, OutAdRat |
 	SectoralConstantProductionIndex * OutAdRat |
-	T11=Sect5dOut, T12=Sect4dOut, T13=Sect3dOut, T14=SectScOut, T15=SectC1COut, T16=SectC2Out */
+	T11=Sect5dOut, T12=Sect4dOut, T13=Sect3dOut, T14=SectScOut */
 
 	Create table  	work.SectOut as 
     Select          a.IndustryID, a.CensusPeriodID, a.YearID, a.YearNo,(a.Value*b.Value) as Value,
@@ -716,8 +729,6 @@ Proc sql;
 							when a.DataSeriesID="T54" then "T12"
 							when a.DataSeriesID="T55" then "T13"
 							when a.DataSeriesID="T58" then "T14"
-							when a.DataSeriesID="T56" then "T15"
-							when a.DataSeriesID="T57" then "T16"
 					end		as DataSeriesID						
     from 	     	work.SectoralConstantProductionIndex a
 	inner join		work.OutAdRat b
@@ -796,3 +807,4 @@ quit;
 proc catalog c=work.sasmacr kill force;
 run;
 quit;
+
